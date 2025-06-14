@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Periodic Table</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        
+        .particle-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .floating-particle {
+            position: absolute;
+            border-radius: 50%;
+            animation: float 20s infinite linear;
+            opacity: 0.1;
+        }
+        
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.1;
+            }
+            90% {
+                opacity: 0.1;
+            }
+            100% {
+                transform: translateY(-100px) rotate(360deg);
+                opacity: 0;
+            }
+        }
+        
+        .glow-effect {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+            transition: box-shadow 0.3s ease;
+        }
+        
+        .glow-effect:hover {
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.8);
+        }
+        
+        .glass-effect {
+            backdrop-filter: blur(16px);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .element-glow {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .element-glow::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s;
+        }
+        
+        .element-glow:hover::before {
+            left: 100%;
+        }
+        
+        .slide-in {
+            animation: slideIn 0.6s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.4s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .pulse-glow {
+            animation: pulseGlow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes pulseGlow {
+            from {
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+            }
+            to {
+                box-shadow: 0 0 40px rgba(59, 130, 246, 0.8);
+            }
+        }
+        
+        /* Responsive grid adjustments */
+        @media (max-width: 1200px) {
+            .periodic-grid {
+                font-size: 0.8rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .periodic-grid {
+                font-size: 0.6rem;
+                gap: 1px;
+            }
+            .modal-content {
+                grid-template-columns: 1fr !important;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .periodic-grid {
+                font-size: 0.5rem;
+                gap: 0.5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const InteractivePeriodicTable = () => {
+            const [elements, setElements] = useState([]);
+            const [selectedElement, setSelectedElement] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [show3D, setShow3D] = useState(false);
+            const [particleEffects, setParticleEffects] = useState(true);
+            const [performanceMode, setPerformanceMode] = useState(false);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filteredElements, setFilteredElements] = useState([]);
+            const mountRef = useRef(null);
+            const sceneRef = useRef(null);
+            const rendererRef = useRef(null);
+            const animationRef = useRef(null);
+            const particleContainerRef = useRef(null);
+
+            // Load and parse CSV data
+            useEffect(() => {
+                const loadElements = async () => {
+                    try {
+                        const response = await fetch('Periodic Table of Elements.csv');
+                        const csvData = await response.text();
+                        
+                        const lines = csvData.trim().split('\n');
+                        const headers = lines[0].split(',');
+                        
+                        const parsedElements = lines.slice(1).map(line => {
+                            const values = line.split(',');
+                            const element = {};
+                            headers.forEach((header, index) => {
+                                const value = values[index]?.trim();
+                                element[header] = isNaN(value) ? value : parseFloat(value);
+                            });
+                            return element;
+                        });
+                        
+                        setElements(parsedElements);
+                        setFilteredElements(parsedElements);
+                        setLoading(false);
+                    } catch (error) {
+                        console.error('Error loading elements:', error);
+                        alert('Error loading CSV file. Make sure "Periodic Table of Elements.csv" is in the same folder as this HTML file.');
+                        setLoading(false);
+                    }
+                };
+                
+                loadElements();
+            }, []);
+
+            // Search functionality
+            useEffect(() => {
+                if (searchTerm) {
+                    const filtered = elements.filter(element =>
+                        element.Element.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        element.Symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        element.AtomicNumber.toString().includes(searchTerm)
+                    );
+                    setFilteredElements(filtered);
+                } else {
+                    setFilteredElements(elements);
+                }
+            }, [searchTerm, elements]);
+
+            // Particle effects
+            useEffect(() => {
+                if (!particleEffects || !particleContainerRef.current) return;
+
+                const createParticle = () => {
+                    const particle = document.createElement('div');
+                    particle.className = 'floating-particle';
+                    
+                    const size = Math.random() * 6 + 2;
+                    const colors = ['#3b82f6', '#8b5cf6', '#06d6a0', '#f72585', '#ffbe0b'];
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    
+                    particle.style.width = `${size}px`;
+                    particle.style.height = `${size}px`;
+                    particle.style.backgroundColor = color;
+                    particle.style.left = `${Math.random() * 100}%`;
+                    particle.style.animationDelay = `${Math.random() * 20}s`;
+                    particle.style.animationDuration = `${15 + Math.random() * 10}s`;
+                    
+                    particleContainerRef.current.appendChild(particle);
+                    
+                    setTimeout(() => {
+                        if (particle.parentNode) {
+                            particle.parentNode.removeChild(particle);
+                        }
+                    }, 25000);
+                };
+
+                const interval = setInterval(createParticle, performanceMode ? 2000 : 500);
+                
+                return () => clearInterval(interval);
+            }, [particleEffects, performanceMode]);
+
+            // Get element color based on type
+            const getElementColor = (element) => {
+                const colors = {
+                    'Alkali Metal': '#10b981',
+                    'Alkaline Earth Metal': '#059669',
+                    'Transition Metal': '#374151',
+                    'Lanthanide': '#f59e0b',
+                    'Actinide': '#dc2626',
+                    'Noble Gas': '#8b5cf6',
+                    'Halogen': '#ec4899',
+                    'Nonmetal': '#ef4444',
+                    'Metalloid': '#f59e0b',
+                    'Metal': '#3b82f6'
+                };
+
+                if (element.Metal === 'yes') return colors.Metal;
+                if (element.Nonmetal === 'yes') return colors.Nonmetal;
+                if (element.Metalloid === 'yes') return colors.Metalloid;
+                return colors[element.Type] || '#6b7280';
+            };
+
+            // Create 3D atomic model
+            const create3DModel = (element) => {
+                if (!mountRef.current) return;
+
+                // Clean up previous scene
+                if (rendererRef.current) {
+                    if (animationRef.current) {
+                        cancelAnimationFrame(animationRef.current);
+                        animationRef.current = null;
+                    }
+                    
+                    if (mountRef.current.contains(rendererRef.current.domElement)) {
+                        mountRef.current.removeChild(rendererRef.current.domElement);
+                    }
+                    rendererRef.current.dispose();
+                    rendererRef.current = null;
+                }
+
+                if (sceneRef.current) {
+                    sceneRef.current.traverse((child) => {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(material => material.dispose());
+                            } else {
+                                child.material.dispose();
+                            }
+                        }
+                    });
+                    sceneRef.current = null;
+                }
+
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(75, 400 / 300, 0.1, 1000);
+                const renderer = new THREE.WebGLRenderer({ antialias: !performanceMode, alpha: true });
+                
+                renderer.setSize(400, 300);
+                renderer.setClearColor(0x000000, 0);
+                renderer.shadowMap.enabled = !performanceMode;
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                mountRef.current.appendChild(renderer.domElement);
+                
+                rendererRef.current = renderer;
+                sceneRef.current = scene;
+
+                // Enhanced mouse controls
+                let isDragging = false;
+                let previousMousePosition = { x: 0, y: 0 };
+                let cameraDistance = 12;
+                let cameraTheta = 0;
+                let cameraPhi = 0.1; // Start in top-down view
+
+                const updateCameraPosition = () => {
+                    camera.position.x = cameraDistance * Math.sin(cameraPhi) * Math.cos(cameraTheta);
+                    camera.position.y = cameraDistance * Math.cos(cameraPhi);
+                    camera.position.z = cameraDistance * Math.sin(cameraPhi) * Math.sin(cameraTheta);
+                    camera.lookAt(0, 0, 0);
+                };
+
+                renderer.domElement.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    previousMousePosition = { x: e.clientX, y: e.clientY };
+                });
+
+                renderer.domElement.addEventListener('mousemove', (e) => {
+                    if (isDragging) {
+                        const deltaMove = {
+                            x: e.clientX - previousMousePosition.x,
+                            y: e.clientY - previousMousePosition.y
+                        };
+
+                        cameraTheta += deltaMove.x * 0.01;
+                        cameraPhi += deltaMove.y * 0.01;
+                        
+                        cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraPhi));
+                        
+                        updateCameraPosition();
+                        previousMousePosition = { x: e.clientX, y: e.clientY };
+                    }
+                });
+
+                renderer.domElement.addEventListener('mouseup', () => {
+                    isDragging = false;
+                });
+
+                renderer.domElement.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    cameraDistance += e.deltaY * 0.01;
+                    cameraDistance = Math.max(5, Math.min(50, cameraDistance));
+                    updateCameraPosition();
+                });
+
+                // Set initial camera position
+                updateCameraPosition();
+
+                // Create nucleus
+                const nucleusGroup = new THREE.Group();
+                scene.add(nucleusGroup);
+
+                const totalNucleons = element.NumberofProtons + element.NumberofNeutrons;
+                const nucleusRadius = Math.max(1, Math.pow(totalNucleons, 1/3) * 0.3);
+
+                // Create nucleus background sphere
+                const nucleusGeometry = new THREE.SphereGeometry(nucleusRadius, performanceMode ? 16 : 32, performanceMode ? 16 : 32);
+                const nucleusMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x331122,
+                    transparent: true,
+                    opacity: 0.2,
+                    shininess: 100,
+                    emissive: 0x220011
+                });
+                const nucleusSphere = new THREE.Mesh(nucleusGeometry, nucleusMaterial);
+                nucleusGroup.add(nucleusSphere);
+
+                // Enhanced protons with accurate shell model positioning
+                const protonGeometry = new THREE.SphereGeometry(0.12, performanceMode ? 8 : 12, performanceMode ? 8 : 12);
+                const protonMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0xff4444,
+                    shininess: 60,
+                    emissive: 0x441111
+                });
+                
+                const maxProtons = performanceMode ? Math.min(element.NumberofProtons, 60) : element.NumberofProtons;
+                
+                // Nuclear shell model magic numbers and shell capacities
+                const protonShellCapacities = [2, 6, 12, 8, 22, 32, 44]; // Based on shell model
+                
+                for (let i = 0; i < maxProtons; i++) {
+                    const proton = new THREE.Mesh(protonGeometry, protonMaterial);
+                    
+                    // Determine which shell this proton belongs to
+                    let currentShell = 0;
+                    let protonsAccounted = 0;
+                    while (protonsAccounted + protonShellCapacities[currentShell] <= i && currentShell < protonShellCapacities.length - 1) {
+                        protonsAccounted += protonShellCapacities[currentShell];
+                        currentShell++;
+                    }
+                    
+                    const protonInShell = i - protonsAccounted;
+                    const protonsInCurrentShell = Math.min(protonShellCapacities[currentShell], maxProtons - protonsAccounted);
+                    const shellRadius = nucleusRadius * (0.3 + currentShell * 0.2);
+                    
+                    if (maxProtons <= 4) {
+                        // Special case for very light nuclei (like Helium, Lithium)
+                        if (i === 0) {
+                            proton.position.set(-0.3, 0, 0);
+                        } else if (i === 1) {
+                            proton.position.set(0.3, 0, 0);
+                        } else if (i === 2) {
+                            proton.position.set(0, -0.3, 0);
+                        } else {
+                            proton.position.set(0, 0.3, 0);
+                        }
+                    } else {
+                        // Use spherical distribution for larger nuclei
+                        const phi = Math.acos(-1 + (2 * protonInShell) / protonsInCurrentShell);
+                        const theta = Math.sqrt(protonsInCurrentShell * Math.PI) * phi;
+                        
+                        proton.position.x = shellRadius * Math.cos(theta) * Math.sin(phi);
+                        proton.position.y = shellRadius * Math.sin(theta) * Math.sin(phi);
+                        proton.position.z = shellRadius * Math.cos(phi);
+                    }
+                    
+                    proton.castShadow = !performanceMode;
+                    nucleusGroup.add(proton);
+                }
+
+                // Enhanced neutrons with shell model positioning
+                const neutronMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x999999,
+                    shininess: 60,
+                    emissive: 0x222222
+                });
+                
+                const maxNeutrons = performanceMode ? Math.min(element.NumberofNeutrons, 60) : element.NumberofNeutrons;
+                const neutronShellCapacities = [2, 6, 12, 8, 22, 32, 44]; // Similar to protons
+                
+                for (let i = 0; i < maxNeutrons; i++) {
+                    const neutron = new THREE.Mesh(protonGeometry, neutronMaterial);
+                    
+                    // Determine shell for neutron
+                    let currentShell = 0;
+                    let neutronsAccounted = 0;
+                    while (neutronsAccounted + neutronShellCapacities[currentShell] <= i && currentShell < neutronShellCapacities.length - 1) {
+                        neutronsAccounted += neutronShellCapacities[currentShell];
+                        currentShell++;
+                    }
+                    
+                    const neutronInShell = i - neutronsAccounted;
+                    const neutronsInCurrentShell = Math.min(neutronShellCapacities[currentShell], maxNeutrons - neutronsAccounted);
+                    const shellRadius = nucleusRadius * (0.25 + currentShell * 0.2);
+                    
+                    if (maxNeutrons <= 4) {
+                        // Special positioning for light nuclei to interleave with protons
+                        if (i === 0) {
+                            neutron.position.set(0, 0, -0.3);
+                        } else if (i === 1) {
+                            neutron.position.set(0, 0, 0.3);
+                        } else if (i === 2) {
+                            neutron.position.set(-0.2, 0.2, 0);
+                        } else {
+                            neutron.position.set(0.2, -0.2, 0);
+                        }
+                    } else {
+                        // Position neutrons to provide optimal shielding between protons
+                        const phi = Math.acos(-1 + (2 * neutronInShell) / neutronsInCurrentShell);
+                        const theta = Math.sqrt(neutronsInCurrentShell * Math.PI) * phi + Math.PI / 4; // Offset from protons
+                        
+                        neutron.position.x = shellRadius * Math.cos(theta) * Math.sin(phi);
+                        neutron.position.y = shellRadius * Math.sin(theta) * Math.sin(phi);
+                        neutron.position.z = shellRadius * Math.cos(phi);
+                    }
+                    
+                    neutron.castShadow = !performanceMode;
+                    nucleusGroup.add(neutron);
+                }
+
+                // Create electron shells
+                const shells = element.NumberofShells || 1;
+                const electronsPerShell = [2, 8, 18, 32, 32, 18, 8];
+                let remainingElectrons = element.NumberofElectrons;
+
+                for (let shell = 0; shell < shells && remainingElectrons > 0; shell++) {
+                    const shellRadius = nucleusRadius + 3 + shell * 2.5;
+                    const electronsInShell = Math.min(remainingElectrons, electronsPerShell[shell]);
+                    
+                    // Create orbit path
+                    const orbitGeometry = new THREE.RingGeometry(shellRadius - 0.05, shellRadius + 0.05, performanceMode ? 32 : 64);
+                    const orbitMaterial = new THREE.MeshBasicMaterial({
+                        color: 0x444444,
+                        transparent: true,
+                        opacity: 0.2,
+                        side: THREE.DoubleSide
+                    });
+                    const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
+                    orbit.rotation.x = Math.PI / 2;
+                    scene.add(orbit);
+
+                    // Add electrons
+                    const electronGeometry = new THREE.SphereGeometry(0.1, performanceMode ? 6 : 8, performanceMode ? 6 : 8);
+                    const electronMaterial = new THREE.MeshPhongMaterial({ 
+                        color: 0x00ff44,
+                        emissive: 0x002211,
+                        shininess: 100
+                    });
+
+                    for (let e = 0; e < electronsInShell; e++) {
+                        const electron = new THREE.Mesh(electronGeometry, electronMaterial);
+                        const angle = (e / electronsInShell) * Math.PI * 2;
+                        
+                        electron.position.x = shellRadius * Math.cos(angle);
+                        electron.position.z = shellRadius * Math.sin(angle);
+                        electron.position.y = 0;
+                        
+                        electron.userData = { 
+                            shell, 
+                            angle: angle, 
+                            radius: shellRadius,
+                            speed: 0.02 / (shell + 1)
+                        };
+                        
+                        scene.add(electron);
+                    }
+                    
+                    remainingElectrons -= electronsInShell;
+                }
+
+                // Enhanced lighting system
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+                scene.add(ambientLight);
+                
+                const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.6);
+                directionalLight1.position.set(10, 10, 10);
+                directionalLight1.castShadow = !performanceMode;
+                scene.add(directionalLight1);
+                
+                const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+                directionalLight2.position.set(-10, -10, -10);
+                scene.add(directionalLight2);
+
+                if (!performanceMode) {
+                    const pointLight = new THREE.PointLight(0x3b82f6, 0.5, 100);
+                    pointLight.position.set(0, 0, 0);
+                    scene.add(pointLight);
+                }
+
+                // Animation loop
+                const animate = () => {
+                    if (!rendererRef.current) return;
+                    
+                    animationRef.current = requestAnimationFrame(animate);
+                    
+                    nucleusGroup.rotation.y += 0.005;
+                    nucleusGroup.rotation.x += 0.003;
+                    
+                    scene.children.forEach(child => {
+                        if (child.userData && child.userData.shell !== undefined) {
+                            child.userData.angle += child.userData.speed;
+                            child.position.x = child.userData.radius * Math.cos(child.userData.angle);
+                            child.position.z = child.userData.radius * Math.sin(child.userData.angle);
+                        }
+                    });
+                    
+                    renderer.render(scene, camera);
+                };
+
+                animate();
+            };
+
+            // Get element position in periodic table
+            const getElementPosition = (element) => {
+                const period = element.Period;
+                let group = element.Group;
+                
+                if (element.Type === 'Lanthanide') {
+                    return { row: period + 2, col: element.AtomicNumber - 56 + 2 };
+                }
+                if (element.Type === 'Actinide') {
+                    return { row: period + 3, col: element.AtomicNumber - 88 + 2 };
+                }
+                
+                return { row: period, col: group };
+            };
+
+            const handleElementClick = (element) => {
+                setSelectedElement(element);
+                setShow3D(true);
+                setTimeout(() => create3DModel(element), 100);
+            };
+
+            const isElementFiltered = (element) => {
+                return filteredElements.includes(element);
+            };
+
+            if (loading) {
+                return React.createElement('div', {
+                    className: "flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900"
+                }, [
+                    React.createElement('div', {
+                        key: 'loading-spinner',
+                        className: "pulse-glow rounded-full p-8 glass-effect"
+                    }, React.createElement('div', {
+                        className: "text-white text-xl font-medium"
+                    }, "Loading Periodic Table...")),
+                ]);
+            }
+
+            const createPeriodicGrid = () => {
+                const grid = Array(10).fill().map(() => Array(18).fill(null));
+                
+                elements.forEach(element => {
+                    const pos = getElementPosition(element);
+                    if (pos.row >= 1 && pos.row <= 9 && pos.col >= 1 && pos.col <= 18) {
+                        grid[pos.row - 1][pos.col - 1] = element;
+                    }
+                });
+                
+                return grid;
+            };
+
+            const periodicGrid = createPeriodicGrid();
+            const lanthanides = elements.filter(e => e.Type === 'Lanthanide');
+            const actinides = elements.filter(e => e.Type === 'Actinide');
+
+            return React.createElement('div', {
+                className: "min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 text-white relative"
+            }, [
+                // Particle background
+                particleEffects && React.createElement('div', {
+                    key: 'particle-bg',
+                    ref: particleContainerRef,
+                    className: "particle-bg"
+                }),
+
+                React.createElement('div', {
+                    key: 'main-content',
+                    className: "relative z-10 p-4 max-w-7xl mx-auto"
+                }, [
+                    // Header with controls
+                    React.createElement('div', {
+                        key: 'header',
+                        className: "slide-in mb-8"
+                    }, [
+                        React.createElement('h1', {
+                            key: 'title',
+                            className: "text-4xl md:text-6xl font-bold text-center mb-6 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent"
+                        }, "Interactive 3D Periodic Table"),
+
+                        // Controls panel
+                        React.createElement('div', {
+                            key: 'controls',
+                            className: "flex flex-wrap gap-4 justify-center items-center mb-6 glass-effect rounded-lg p-4"
+                        }, [
+                            // Search bar
+                            React.createElement('input', {
+                                key: 'search',
+                                type: 'text',
+                                placeholder: 'Search elements...',
+                                value: searchTerm,
+                                onChange: (e) => setSearchTerm(e.target.value),
+                                className: "px-4 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                            }),
+
+                            // Performance toggle
+                            React.createElement('label', {
+                                key: 'performance-label',
+                                className: "flex items-center space-x-2 cursor-pointer"
+                            }, [
+                                React.createElement('input', {
+                                    key: 'performance-checkbox',
+                                    type: 'checkbox',
+                                    checked: performanceMode,
+                                    onChange: (e) => setPerformanceMode(e.target.checked),
+                                    className: "rounded"
+                                }),
+                                React.createElement('span', {
+                                    key: 'performance-text',
+                                    className: "text-sm"
+                                }, "Performance Mode")
+                            ]),
+
+                            // Particle effects toggle
+                            React.createElement('label', {
+                                key: 'particles-label',
+                                className: "flex items-center space-x-2 cursor-pointer"
+                            }, [
+                                React.createElement('input', {
+                                    key: 'particles-checkbox',
+                                    type: 'checkbox',
+                                    checked: particleEffects,
+                                    onChange: (e) => setParticleEffects(e.target.checked),
+                                    className: "rounded"
+                                }),
+                                React.createElement('span', {
+                                    key: 'particles-text',
+                                    className: "text-sm"
+                                }, "Particle Effects")
+                            ])
+                        ])
+                    ]),
+                    
+                    // Main periodic table
+                    React.createElement('div', {
+                        key: 'main-grid',
+                        className: "periodic-grid grid gap-1 mb-8 fade-in",
+                        style: { gridTemplateColumns: 'repeat(18, 1fr)' }
+                    }, periodicGrid.map((row, rowIndex) =>
+                        row.map((element, colIndex) =>
+                            React.createElement('div', {
+                                key: `${rowIndex}-${colIndex}`,
+                                className: `aspect-square border border-gray-600 rounded-lg transition-all duration-300 cursor-pointer element-glow ${
+                                    element ? 'hover:scale-110 hover:z-10' : ''
+                                } ${element && !isElementFiltered(element) ? 'opacity-30' : ''}`,
+                                style: {
+                                    backgroundColor: element ? getElementColor(element) : 'transparent',
+                                    opacity: element ? (isElementFiltered(element) ? 0.9 : 0.3) : 0.05,
+                                    boxShadow: element && isElementFiltered(element) ? `0 0 15px ${getElementColor(element)}40` : 'none'
+                                },
+                                onClick: () => element && isElementFiltered(element) && handleElementClick(element)
+                            }, element && React.createElement('div', {
+                                className: "h-full flex flex-col justify-center items-center text-center p-1"
+                            }, [
+                                React.createElement('div', { key: 'atomic-num', className: "text-xs font-bold" }, element.AtomicNumber),
+                                React.createElement('div', { key: 'symbol', className: "text-sm md:text-lg font-bold" }, element.Symbol),
+                                React.createElement('div', { key: 'name', className: "text-xs truncate w-full hidden md:block" }, element.Element)
+                            ]))
+                        )
+                    ).flat()),
+                    
+                    // Lanthanides and Actinides
+                    React.createElement('div', {
+                        key: 'special-series',
+                        className: "space-y-4 mb-8 fade-in"
+                    }, [
+                        React.createElement('div', {
+                            key: 'lanthanides',
+                            className: "grid gap-1",
+                            style: { gridTemplateColumns: 'repeat(auto-fit, minmax(40px, 1fr))' }
+                        }, lanthanides.map(element =>
+                            React.createElement('div', {
+                                key: element.AtomicNumber,
+                                className: `aspect-square border border-gray-600 rounded-lg transition-all duration-300 cursor-pointer element-glow hover:scale-110 ${
+                                    !isElementFiltered(element) ? 'opacity-30' : ''
+                                }`,
+                                style: { 
+                                    backgroundColor: getElementColor(element), 
+                                    opacity: isElementFiltered(element) ? 0.9 : 0.3,
+                                    boxShadow: isElementFiltered(element) ? `0 0 15px ${getElementColor(element)}40` : 'none'
+                                },
+                                onClick: () => isElementFiltered(element) && handleElementClick(element)
+                            }, React.createElement('div', {
+                                className: "h-full flex flex-col justify-center items-center text-center p-1"
+                            }, [
+                                React.createElement('div', { key: 'atomic-num', className: "text-xs font-bold" }, element.AtomicNumber),
+                                React.createElement('div', { key: 'symbol', className: "text-sm font-bold" }, element.Symbol),
+                                React.createElement('div', { key: 'name', className: "text-xs truncate w-full hidden sm:block" }, element.Element)
+                            ]))
+                        )),
+                        
+                        React.createElement('div', {
+                            key: 'actinides',
+                            className: "grid gap-1",
+                            style: { gridTemplateColumns: 'repeat(auto-fit, minmax(40px, 1fr))' }
+                        }, actinides.map(element =>
+                            React.createElement('div', {
+                                key: element.AtomicNumber,
+                                className: `aspect-square border border-gray-600 rounded-lg transition-all duration-300 cursor-pointer element-glow hover:scale-110 ${
+                                    !isElementFiltered(element) ? 'opacity-30' : ''
+                                }`,
+                                style: { 
+                                    backgroundColor: getElementColor(element), 
+                                    opacity: isElementFiltered(element) ? 0.9 : 0.3,
+                                    boxShadow: isElementFiltered(element) ? `0 0 15px ${getElementColor(element)}40` : 'none'
+                                },
+                                onClick: () => isElementFiltered(element) && handleElementClick(element)
+                            }, React.createElement('div', {
+                                className: "h-full flex flex-col justify-center items-center text-center p-1"
+                            }, [
+                                React.createElement('div', { key: 'atomic-num', className: "text-xs font-bold" }, element.AtomicNumber),
+                                React.createElement('div', { key: 'symbol', className: "text-sm font-bold" }, element.Symbol),
+                                React.createElement('div', { key: 'name', className: "text-xs truncate w-full hidden sm:block" }, element.Element)
+                            ]))
+                        ))
+                    ]),
+                    
+                    // Element legend
+                    React.createElement('div', {
+                        key: 'legend',
+                        className: "glass-effect rounded-lg p-4 mb-8 fade-in"
+                    }, [
+                        React.createElement('h3', {
+                            key: 'legend-title',
+                            className: "text-lg font-semibold mb-3 text-center"
+                        }, "Element Types"),
+                        React.createElement('div', {
+                            key: 'legend-grid',
+                            className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm"
+                        }, [
+                            React.createElement('div', { key: 'alkali', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#10b981' } }),
+                                React.createElement('span', {}, "Alkali Metal")
+                            ]),
+                            React.createElement('div', { key: 'alkaline', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#059669' } }),
+                                React.createElement('span', {}, "Alkaline Earth")
+                            ]),
+                            React.createElement('div', { key: 'transition', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#374151' } }),
+                                React.createElement('span', {}, "Transition Metal")
+                            ]),
+                            React.createElement('div', { key: 'lanthanide', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#f59e0b' } }),
+                                React.createElement('span', {}, "Lanthanide")
+                            ]),
+                            React.createElement('div', { key: 'actinide', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#dc2626' } }),
+                                React.createElement('span', {}, "Actinide")
+                            ]),
+                            React.createElement('div', { key: 'noble', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#8b5cf6' } }),
+                                React.createElement('span', {}, "Noble Gas")
+                            ]),
+                            React.createElement('div', { key: 'halogen', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#ec4899' } }),
+                                React.createElement('span', {}, "Halogen")
+                            ]),
+                            React.createElement('div', { key: 'nonmetal', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#ef4444' } }),
+                                React.createElement('span', {}, "Nonmetal")
+                            ]),
+                            React.createElement('div', { key: 'metalloid', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#f59e0b' } }),
+                                React.createElement('span', {}, "Metalloid")
+                            ]),
+                            React.createElement('div', { key: 'metal', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#3b82f6' } }),
+                                React.createElement('span', {}, "Metal")
+                            ])
+                        ])
+                    ]),
+                    
+                    // Modal
+                    selectedElement && React.createElement('div', {
+                        key: 'modal',
+                        className: "fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4 fade-in",
+                        onClick: (e) => {
+                            if (e.target === e.currentTarget) {
+                                setSelectedElement(null);
+                                setShow3D(false);
+                            }
+                        }
+                    }, React.createElement('div', {
+                        className: "glass-effect rounded-xl p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto glow-effect",
+                        onClick: (e) => e.stopPropagation()
+                    }, [
+                        React.createElement('div', {
+                            key: 'modal-header',
+                            className: "flex justify-between items-center mb-6"
+                        }, [
+                            React.createElement('div', {
+                                key: 'element-info',
+                                className: "flex items-center space-x-4"
+                            }, [
+                                React.createElement('div', {
+                                    key: 'element-icon',
+                                    className: "w-16 h-16 rounded-lg flex items-center justify-center text-2xl font-bold",
+                                    style: { backgroundColor: getElementColor(selectedElement) }
+                                }, selectedElement.Symbol),
+                                React.createElement('div', { key: 'element-details' }, [
+                                    React.createElement('h2', {
+                                        key: 'element-name',
+                                        className: "text-2xl md:text-3xl font-bold"
+                                    }, selectedElement.Element),
+                                    React.createElement('p', {
+                                        key: 'element-type',
+                                        className: "text-lg text-gray-300"
+                                    }, `${selectedElement.Type} • Atomic #${selectedElement.AtomicNumber}`)
+                                ])
+                            ]),
+                            React.createElement('button', {
+                                key: 'close-btn',
+                                onClick: () => {
+                                    setSelectedElement(null);
+                                    setShow3D(false);
+                                    if (rendererRef.current) {
+                                        if (animationRef.current) {
+                                            cancelAnimationFrame(animationRef.current);
+                                            animationRef.current = null;
+                                        }
+                                        if (mountRef.current && mountRef.current.contains(rendererRef.current.domElement)) {
+                                            mountRef.current.removeChild(rendererRef.current.domElement);
+                                        }
+                                        rendererRef.current.dispose();
+                                        rendererRef.current = null;
+                                    }
+                                    if (sceneRef.current) {
+                                        sceneRef.current.traverse((child) => {
+                                            if (child.geometry) child.geometry.dispose();
+                                            if (child.material) {
+                                                if (Array.isArray(child.material)) {
+                                                    child.material.forEach(material => material.dispose());
+                                                } else {
+                                                    child.material.dispose();
+                                                }
+                                            }
+                                        });
+                                        sceneRef.current = null;
+                                    }
+                                },
+                                className: "text-white hover:text-red-400 text-3xl transition-colors duration-200 hover:scale-110"
+                            }, "×")
+                        ]),
+                        
+                        React.createElement('div', {
+                            key: 'modal-content',
+                            className: "modal-content grid grid-cols-1 lg:grid-cols-2 gap-8"
+                        }, [
+                            React.createElement('div', { key: '3d-section', className: "space-y-4" }, [
+                                React.createElement('h3', {
+                                    key: '3d-title',
+                                    className: "text-xl font-semibold"
+                                }, "3D Atomic Model"),
+                                React.createElement('div', {
+                                    key: '3d-container',
+                                    ref: mountRef,
+                                    className: "w-full h-80 bg-gray-900 rounded-lg border-2 border-gray-600 relative glow-effect"
+                                }),
+                                React.createElement('div', {
+                                    key: '3d-legend',
+                                    className: "glass-effect rounded-lg p-3"
+                                }, React.createElement('div', {
+                                    className: "flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-2 sm:space-y-0"
+                                }, [
+                                    React.createElement('div', { key: 'particle-info', className: "flex flex-wrap gap-4 text-sm" }, [
+                                        React.createElement('div', { key: 'protons', className: "flex items-center space-x-1" }, [
+                                            React.createElement('span', { className: "w-3 h-3 rounded-full bg-red-400" }),
+                                            React.createElement('span', {}, `Protons: ${selectedElement.NumberofProtons}`)
+                                        ]),
+                                        React.createElement('div', { key: 'neutrons', className: "flex items-center space-x-1" }, [
+                                            React.createElement('span', { className: "w-3 h-3 rounded-full bg-gray-400" }),
+                                            React.createElement('span', {}, `Neutrons: ${selectedElement.NumberofNeutrons}`)
+                                        ]),
+                                        React.createElement('div', { key: 'electrons', className: "flex items-center space-x-1" }, [
+                                            React.createElement('span', { className: "w-3 h-3 rounded-full bg-green-400" }),
+                                            React.createElement('span', {}, `Electrons: ${selectedElement.NumberofElectrons}`)
+                                        ])
+                                    ]),
+                                    React.createElement('div', {
+                                        key: 'controls-info',
+                                        className: "text-xs text-gray-400"
+                                    }, "🖱️ Drag to rotate • 🔄 Scroll to zoom")
+                                ]))
+                            ]),
+                            
+                            React.createElement('div', { key: 'properties-section', className: "space-y-4" }, [
+                                React.createElement('h3', {
+                                    key: 'properties-title',
+                                    className: "text-xl font-semibold"
+                                }, "Element Properties"),
+                                React.createElement('div', {
+                                    key: 'properties-grid',
+                                    className: "grid grid-cols-1 sm:grid-cols-2 gap-4"
+                                }, [
+                                    React.createElement('div', { key: 'basic-props', className: "glass-effect rounded-lg p-4 space-y-2 text-sm" }, [
+                                        React.createElement('h4', { key: 'basic-title', className: "font-semibold text-blue-400 mb-3" }, "Basic Properties"),
+                                        React.createElement('div', { key: 'atomic-mass' }, [React.createElement('strong', {}, "Atomic Mass: "), `${selectedElement.AtomicMass} u`]),
+                                        React.createElement('div', { key: 'period' }, [React.createElement('strong', {}, "Period: "), selectedElement.Period]),
+                                        React.createElement('div', { key: 'group' }, [React.createElement('strong', {}, "Group: "), selectedElement.Group || 'N/A']),
+                                        React.createElement('div', { key: 'phase' }, [React.createElement('strong', {}, "Phase: "), selectedElement.Phase]),
+                                        React.createElement('div', { key: 'shells' }, [React.createElement('strong', {}, "Electron Shells: "), selectedElement.NumberofShells]),
+                                        React.createElement('div', { key: 'valence' }, [React.createElement('strong', {}, "Valence Electrons: "), selectedElement.NumberofValence || 'N/A'])
+                                    ]),
+                                    
+                                    React.createElement('div', { key: 'physical-props', className: "glass-effect rounded-lg p-4 space-y-2 text-sm" }, [
+                                        React.createElement('h4', { key: 'physical-title', className: "font-semibold text-green-400 mb-3" }, "Physical Properties"),
+                                        selectedElement.Density && React.createElement('div', { key: 'density' }, [React.createElement('strong', {}, "Density: "), `${selectedElement.Density} g/cm³`]),
+                                        selectedElement.MeltingPoint && React.createElement('div', { key: 'melting' }, [React.createElement('strong', {}, "Melting Point: "), `${selectedElement.MeltingPoint} K`]),
+                                        selectedElement.BoilingPoint && React.createElement('div', { key: 'boiling' }, [React.createElement('strong', {}, "Boiling Point: "), `${selectedElement.BoilingPoint} K`]),
+                                        selectedElement.Electronegativity && React.createElement('div', { key: 'electronegativity' }, [React.createElement('strong', {}, "Electronegativity: "), selectedElement.Electronegativity]),
+                                        selectedElement.AtomicRadius && React.createElement('div', { key: 'radius' }, [React.createElement('strong', {}, "Atomic Radius: "), `${selectedElement.AtomicRadius} Å`]),
+                                        React.createElement('div', { key: 'radioactive' }, [React.createElement('strong', {}, "Radioactive: "), selectedElement.Radioactive === 'yes' ? 'Yes' : 'No']),
+                                        React.createElement('div', { key: 'natural' }, [React.createElement('strong', {}, "Natural: "), selectedElement.Natural === 'yes' ? 'Yes' : 'No'])
+                                    ]),
+                                    
+                                    React.createElement('div', { key: 'discovery-props', className: "glass-effect rounded-lg p-4 space-y-2 text-sm sm:col-span-2" }, [
+                                        React.createElement('h4', { key: 'discovery-title', className: "font-semibold text-purple-400 mb-3" }, "Discovery Information"),
+                                        selectedElement.Discoverer && React.createElement('div', { key: 'discoverer' }, [React.createElement('strong', {}, "Discovered by: "), selectedElement.Discoverer]),
+                                        selectedElement.Year && React.createElement('div', { key: 'year' }, [React.createElement('strong', {}, "Year discovered: "), selectedElement.Year]),
+                                        selectedElement.NumberOfIsotopes && React.createElement('div', { key: 'isotopes' }, [React.createElement('strong', {}, "Number of Isotopes: "), selectedElement.NumberOfIsotopes]),
+                                        selectedElement.SpecificHeat && React.createElement('div', { key: 'specific-heat' }, [React.createElement('strong', {}, "Specific Heat: "), `${selectedElement.SpecificHeat} J/(g·K)`])
+                                    ])
+                                ])
+                            ])
+                        ])
+                    ]))
+                ]),
+
+                // Footer attribution
+                React.createElement('footer', {
+                    key: 'footer',
+                    className: "fixed bottom-4 right-4 text-xs text-gray-400 glass-effect rounded-lg px-3 py-2 z-20 pointer-events-none"
+                }, [
+                    React.createElement('div', { key: 'attribution' }, "Developed by Tanner Tunstall"),
+                    React.createElement('div', { key: 'collaboration' }, "with help from Anthropic's Claude Sonnet 4")
+                ])
+            ]);
+        };
+
+        ReactDOM.render(React.createElement(InteractivePeriodicTable), document.getElementById('root'));
+    </script>
+</body>
+</html>
