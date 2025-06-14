@@ -9,6 +9,8 @@
 
 **An advanced, interactive three-dimensional periodic table application built with React, Three.js, and modern web technologies.**
 
+**The project can be tested live at [periodic-table.tannertunstall.com](https://periodic-table.tannertunstall.com)**
+
 [Features](#features) • [Installation](#installation) • [Usage](#usage-instructions) • [Documentation](#technical-specifications)
 
 </div>
