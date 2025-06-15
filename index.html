@@ -250,25 +250,166 @@
                 return () => clearInterval(interval);
             }, [particleEffects, performanceMode]);
 
-            // Get element color based on type
+            // Get element color based on type - matching reference periodic table
             const getElementColor = (element) => {
                 const colors = {
-                    'Alkali Metal': '#10b981',
-                    'Alkaline Earth Metal': '#059669',
-                    'Transition Metal': '#374151',
-                    'Lanthanide': '#f59e0b',
-                    'Actinide': '#dc2626',
-                    'Noble Gas': '#8b5cf6',
-                    'Halogen': '#ec4899',
-                    'Nonmetal': '#ef4444',
-                    'Metalloid': '#f59e0b',
-                    'Metal': '#3b82f6'
+                    'Alkali Metal': '#22d3ee',           // Cyan - like Li, Na, K
+                    'Alkaline Earth Metal': '#f87171',   // Red/pink - like Be, Mg, Ca
+                    'Transition Metal': '#a855f7',       // Purple - like Sc, Ti, V, etc.
+                    'Post-transition Metal': '#34d399',  // Green - like Al, Ga, In
+                    'Lanthanide': '#e879f9',            // Magenta/pink - lanthanide series
+                    'Actinide': '#fb923c',              // Orange - actinide series
+                    'Noble Gas': '#f472b6',             // Pink/magenta - like He, Ne, Ar
+                    'Halogen': '#60a5fa',               // Blue - like F, Cl, Br
+                    'Reactive Nonmetal': '#3b82f6',     // Blue - like C, N, O
+                    'Metalloid': '#fbbf24',             // Yellow - like B, Si
+                    'Nonmetal': '#3b82f6',              // Blue for general nonmetals
+                    'Metal': '#34d399',                 // Green for general metals
+                    'Unknown': '#9ca3af'                // Gray for unknown properties
                 };
 
-                if (element.Metal === 'yes') return colors.Metal;
-                if (element.Nonmetal === 'yes') return colors.Nonmetal;
-                if (element.Metalloid === 'yes') return colors.Metalloid;
-                return colors[element.Type] || '#6b7280';
+                // Super heavy elements with unknown chemical properties (109-118)
+                if (element.AtomicNumber >= 109 && element.AtomicNumber <= 118) {
+                    return colors['Unknown'];
+                }
+
+                // More specific classification based on element properties
+                if (element.Type === 'Alkali Metal') return colors['Alkali Metal'];
+                if (element.Type === 'Alkaline Earth Metal') return colors['Alkaline Earth Metal'];
+                if (element.Type === 'Transition Metal') return colors['Transition Metal'];
+                if (element.Type === 'Lanthanide') return colors['Lanthanide'];
+                if (element.Type === 'Actinide') return colors['Actinide'];
+                if (element.Type === 'Noble Gas') return colors['Noble Gas'];
+                if (element.Type === 'Halogen') return colors['Halogen'];
+                
+                // Post-transition metals (Al, Ga, In, Sn, Tl, Pb, Bi)
+                if (['Al', 'Ga', 'In', 'Sn', 'Tl', 'Pb', 'Bi'].includes(element.Symbol)) {
+                    return colors['Post-transition Metal'];
+                }
+                
+                // Metalloids (B, Si, Ge, As, Sb, Te, Po)
+                if (['B', 'Si', 'Ge', 'As', 'Sb', 'Te', 'Po'].includes(element.Symbol)) {
+                    return colors['Metalloid'];
+                }
+                
+                // Reactive nonmetals (H, C, N, O, P, S, Se)
+                if (['H', 'C', 'N', 'O', 'P', 'S', 'Se'].includes(element.Symbol)) {
+                    return colors['Reactive Nonmetal'];
+                }
+                
+                // Fallback logic
+                if (element.Metalloid === 'yes') return colors['Metalloid'];
+                if (element.Nonmetal === 'yes') return colors['Reactive Nonmetal'];
+                if (element.Metal === 'yes') return colors['Metal'];
+                
+                return colors['Unknown'];
+            };
+
+            // Improved nucleus packing algorithm - ultra-dense like real nuclei
+            const createNucleusCluster = (numProtons, numNeutrons, scene, nucleusRadius, performanceMode) => {
+                const nucleonRadius = 0.15; // Slightly larger nucleons
+                const packingDensity = 0.95; // Much tighter packing - almost touching
+                const totalNucleons = numProtons + numNeutrons;
+                
+                // Make nucleus radius smaller to force much tighter packing
+                const actualNucleusRadius = nucleusRadius * 0.6;
+                
+                // Create arrays to hold nucleons
+                const nucleons = [];
+                
+                // Create protons
+                const protonGeometry = new THREE.SphereGeometry(nucleonRadius, performanceMode ? 8 : 12, performanceMode ? 8 : 12);
+                const protonMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0xff3333,
+                    shininess: 80,
+                    emissive: 0x441111
+                });
+                
+                // Create neutrons
+                const neutronMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0xaaaaaa,
+                    shininess: 80,
+                    emissive: 0x333333
+                });
+                
+                // Generate tightly packed positions using close sphere packing
+                const positions = [];
+                const maxAttempts = 2000;
+                
+                for (let i = 0; i < totalNucleons; i++) {
+                    let validPosition = false;
+                    let attempts = 0;
+                    let newPosition;
+                    
+                    while (!validPosition && attempts < maxAttempts) {
+                        // Generate position within much smaller nucleus radius
+                        const radius = Math.random() * actualNucleusRadius * 0.9;
+                        const theta = Math.random() * Math.PI * 2;
+                        const phi = Math.acos(2 * Math.random() - 1);
+                        
+                        newPosition = new THREE.Vector3(
+                            radius * Math.sin(phi) * Math.cos(theta),
+                            radius * Math.sin(phi) * Math.sin(theta),
+                            radius * Math.cos(phi)
+                        );
+                        
+                        // Much smaller minimum distance - nucleons almost touching
+                        validPosition = true;
+                        const minDistance = nucleonRadius * 1.8 * packingDensity; // Much closer
+                        
+                        for (let j = 0; j < positions.length; j++) {
+                            if (newPosition.distanceTo(positions[j]) < minDistance) {
+                                validPosition = false;
+                                break;
+                            }
+                        }
+                        
+                        attempts++;
+                    }
+                    
+                    // If we couldn't find a valid position, force it closer to center
+                    if (!validPosition) {
+                        const fallbackRadius = actualNucleusRadius * (0.3 + 0.4 * Math.random());
+                        const theta = (i / totalNucleons) * Math.PI * 2 + Math.random() * 0.5;
+                        const phi = Math.acos(2 * Math.random() - 1);
+                        
+                        newPosition = new THREE.Vector3(
+                            fallbackRadius * Math.sin(phi) * Math.cos(theta),
+                            fallbackRadius * Math.sin(phi) * Math.sin(theta),
+                            fallbackRadius * Math.cos(phi)
+                        );
+                    }
+                    
+                    positions.push(newPosition);
+                }
+                
+                // Randomly mix protons and neutrons
+                const nucleonTypes = [];
+                for (let i = 0; i < numProtons; i++) nucleonTypes.push('proton');
+                for (let i = 0; i < numNeutrons; i++) nucleonTypes.push('neutron');
+                
+                // Shuffle the array to mix protons and neutrons
+                for (let i = nucleonTypes.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [nucleonTypes[i], nucleonTypes[j]] = [nucleonTypes[j], nucleonTypes[i]];
+                }
+                
+                // Create nucleon meshes at the calculated positions
+                const nucleusGroup = new THREE.Group();
+                
+                for (let i = 0; i < totalNucleons && i < positions.length; i++) {
+                    const isProton = nucleonTypes[i] === 'proton';
+                    const nucleon = new THREE.Mesh(
+                        protonGeometry, 
+                        isProton ? protonMaterial : neutronMaterial
+                    );
+                    
+                    nucleon.position.copy(positions[i]);
+                    nucleon.castShadow = !performanceMode;
+                    nucleusGroup.add(nucleon);
+                }
+                
+                return nucleusGroup;
             };
 
             // Create 3D atomic model
@@ -366,127 +507,33 @@
                 // Set initial camera position
                 updateCameraPosition();
 
-                // Create nucleus
-                const nucleusGroup = new THREE.Group();
-                scene.add(nucleusGroup);
-
+                // Calculate nucleus radius based on number of nucleons (smaller for realistic density)
                 const totalNucleons = element.NumberofProtons + element.NumberofNeutrons;
-                const nucleusRadius = Math.max(1, Math.pow(totalNucleons, 1/3) * 0.3);
+                const nucleusRadius = Math.max(0.6, Math.pow(totalNucleons, 1/3) * 0.2);
 
-                // Create nucleus background sphere
-                const nucleusGeometry = new THREE.SphereGeometry(nucleusRadius, performanceMode ? 16 : 32, performanceMode ? 16 : 32);
+                // Create nucleus background sphere (much smaller and more transparent)
+                const actualNucleusRadius = nucleusRadius * 0.6; // Match the tighter packing
+                const nucleusGeometry = new THREE.SphereGeometry(actualNucleusRadius, performanceMode ? 16 : 32, performanceMode ? 16 : 32);
                 const nucleusMaterial = new THREE.MeshPhongMaterial({ 
-                    color: 0x331122,
+                    color: 0x441133,
                     transparent: true,
-                    opacity: 0.2,
+                    opacity: 0.08, // More transparent to show the dense nucleon packing
                     shininess: 100,
-                    emissive: 0x220011
+                    emissive: 0x330022
                 });
                 const nucleusSphere = new THREE.Mesh(nucleusGeometry, nucleusMaterial);
-                nucleusGroup.add(nucleusSphere);
+                scene.add(nucleusSphere);
 
-                // Enhanced protons with accurate shell model positioning
-                const protonGeometry = new THREE.SphereGeometry(0.12, performanceMode ? 8 : 12, performanceMode ? 8 : 12);
-                const protonMaterial = new THREE.MeshPhongMaterial({ 
-                    color: 0xff4444,
-                    shininess: 60,
-                    emissive: 0x441111
-                });
+                // Create the clustered nucleus using improved algorithm
+                const nucleusGroup = createNucleusCluster(
+                    performanceMode ? Math.min(element.NumberofProtons, 60) : element.NumberofProtons,
+                    performanceMode ? Math.min(element.NumberofNeutrons, 60) : element.NumberofNeutrons,
+                    scene,
+                    nucleusRadius,
+                    performanceMode
+                );
                 
-                const maxProtons = performanceMode ? Math.min(element.NumberofProtons, 60) : element.NumberofProtons;
-                
-                // Nuclear shell model magic numbers and shell capacities
-                const protonShellCapacities = [2, 6, 12, 8, 22, 32, 44]; // Based on shell model
-                
-                for (let i = 0; i < maxProtons; i++) {
-                    const proton = new THREE.Mesh(protonGeometry, protonMaterial);
-                    
-                    // Determine which shell this proton belongs to
-                    let currentShell = 0;
-                    let protonsAccounted = 0;
-                    while (protonsAccounted + protonShellCapacities[currentShell] <= i && currentShell < protonShellCapacities.length - 1) {
-                        protonsAccounted += protonShellCapacities[currentShell];
-                        currentShell++;
-                    }
-                    
-                    const protonInShell = i - protonsAccounted;
-                    const protonsInCurrentShell = Math.min(protonShellCapacities[currentShell], maxProtons - protonsAccounted);
-                    const shellRadius = nucleusRadius * (0.3 + currentShell * 0.2);
-                    
-                    if (maxProtons <= 4) {
-                        // Special case for very light nuclei (like Helium, Lithium)
-                        if (i === 0) {
-                            proton.position.set(-0.3, 0, 0);
-                        } else if (i === 1) {
-                            proton.position.set(0.3, 0, 0);
-                        } else if (i === 2) {
-                            proton.position.set(0, -0.3, 0);
-                        } else {
-                            proton.position.set(0, 0.3, 0);
-                        }
-                    } else {
-                        // Use spherical distribution for larger nuclei
-                        const phi = Math.acos(-1 + (2 * protonInShell) / protonsInCurrentShell);
-                        const theta = Math.sqrt(protonsInCurrentShell * Math.PI) * phi;
-                        
-                        proton.position.x = shellRadius * Math.cos(theta) * Math.sin(phi);
-                        proton.position.y = shellRadius * Math.sin(theta) * Math.sin(phi);
-                        proton.position.z = shellRadius * Math.cos(phi);
-                    }
-                    
-                    proton.castShadow = !performanceMode;
-                    nucleusGroup.add(proton);
-                }
-
-                // Enhanced neutrons with shell model positioning
-                const neutronMaterial = new THREE.MeshPhongMaterial({ 
-                    color: 0x999999,
-                    shininess: 60,
-                    emissive: 0x222222
-                });
-                
-                const maxNeutrons = performanceMode ? Math.min(element.NumberofNeutrons, 60) : element.NumberofNeutrons;
-                const neutronShellCapacities = [2, 6, 12, 8, 22, 32, 44]; // Similar to protons
-                
-                for (let i = 0; i < maxNeutrons; i++) {
-                    const neutron = new THREE.Mesh(protonGeometry, neutronMaterial);
-                    
-                    // Determine shell for neutron
-                    let currentShell = 0;
-                    let neutronsAccounted = 0;
-                    while (neutronsAccounted + neutronShellCapacities[currentShell] <= i && currentShell < neutronShellCapacities.length - 1) {
-                        neutronsAccounted += neutronShellCapacities[currentShell];
-                        currentShell++;
-                    }
-                    
-                    const neutronInShell = i - neutronsAccounted;
-                    const neutronsInCurrentShell = Math.min(neutronShellCapacities[currentShell], maxNeutrons - neutronsAccounted);
-                    const shellRadius = nucleusRadius * (0.25 + currentShell * 0.2);
-                    
-                    if (maxNeutrons <= 4) {
-                        // Special positioning for light nuclei to interleave with protons
-                        if (i === 0) {
-                            neutron.position.set(0, 0, -0.3);
-                        } else if (i === 1) {
-                            neutron.position.set(0, 0, 0.3);
-                        } else if (i === 2) {
-                            neutron.position.set(-0.2, 0.2, 0);
-                        } else {
-                            neutron.position.set(0.2, -0.2, 0);
-                        }
-                    } else {
-                        // Position neutrons to provide optimal shielding between protons
-                        const phi = Math.acos(-1 + (2 * neutronInShell) / neutronsInCurrentShell);
-                        const theta = Math.sqrt(neutronsInCurrentShell * Math.PI) * phi + Math.PI / 4; // Offset from protons
-                        
-                        neutron.position.x = shellRadius * Math.cos(theta) * Math.sin(phi);
-                        neutron.position.y = shellRadius * Math.sin(theta) * Math.sin(phi);
-                        neutron.position.z = shellRadius * Math.cos(phi);
-                    }
-                    
-                    neutron.castShadow = !performanceMode;
-                    nucleusGroup.add(neutron);
-                }
+                scene.add(nucleusGroup);
 
                 // Create electron shells
                 const shells = element.NumberofShells || 1;
@@ -494,7 +541,7 @@
                 let remainingElectrons = element.NumberofElectrons;
 
                 for (let shell = 0; shell < shells && remainingElectrons > 0; shell++) {
-                    const shellRadius = nucleusRadius + 3 + shell * 2.5;
+                    const shellRadius = actualNucleusRadius + 4 + shell * 2.5; // Start from the smaller nucleus
                     const electronsInShell = Math.min(remainingElectrons, electronsPerShell[shell]);
                     
                     // Create orbit path
@@ -563,9 +610,11 @@
                     
                     animationRef.current = requestAnimationFrame(animate);
                     
+                    // Rotate the nucleus group slowly
                     nucleusGroup.rotation.y += 0.005;
                     nucleusGroup.rotation.x += 0.003;
                     
+                    // Animate electrons
                     scene.children.forEach(child => {
                         if (child.userData && child.userData.shell !== undefined) {
                             child.userData.angle += child.userData.speed;
@@ -585,11 +634,13 @@
                 const period = element.Period;
                 let group = element.Group;
                 
-                if (element.Type === 'Lanthanide') {
-                    return { row: period + 2, col: element.AtomicNumber - 56 + 2 };
+                // Don't place lanthanides (58-71) and actinides (90-103) in main grid
+                // Only La (57) and Ac (89) go in the main grid
+                if (element.Type === 'Lanthanide' && element.AtomicNumber !== 57) {
+                    return null; // Don't place in main grid
                 }
-                if (element.Type === 'Actinide') {
-                    return { row: period + 3, col: element.AtomicNumber - 88 + 2 };
+                if (element.Type === 'Actinide' && element.AtomicNumber !== 89) {
+                    return null; // Don't place in main grid
                 }
                 
                 return { row: period, col: group };
@@ -623,7 +674,7 @@
                 
                 elements.forEach(element => {
                     const pos = getElementPosition(element);
-                    if (pos.row >= 1 && pos.row <= 9 && pos.col >= 1 && pos.col <= 18) {
+                    if (pos && pos.row >= 1 && pos.row <= 9 && pos.col >= 1 && pos.col <= 18) {
                         grid[pos.row - 1][pos.col - 1] = element;
                     }
                 });
@@ -740,60 +791,88 @@
                         )
                     ).flat()),
                     
-                    // Lanthanides and Actinides
+                    // Lanthanides and Actinides - separated from main table
                     React.createElement('div', {
                         key: 'special-series',
-                        className: "space-y-4 mb-8 fade-in"
+                        className: "mt-12 space-y-6 fade-in"
                     }, [
+                        // Visual separator
                         React.createElement('div', {
-                            key: 'lanthanides',
-                            className: "grid gap-1",
-                            style: { gridTemplateColumns: 'repeat(auto-fit, minmax(40px, 1fr))' }
-                        }, lanthanides.map(element =>
-                            React.createElement('div', {
-                                key: element.AtomicNumber,
-                                className: `aspect-square border border-gray-600 rounded-lg transition-all duration-300 cursor-pointer element-glow hover:scale-110 ${
-                                    !isElementFiltered(element) ? 'opacity-30' : ''
-                                }`,
-                                style: { 
-                                    backgroundColor: getElementColor(element), 
-                                    opacity: isElementFiltered(element) ? 0.9 : 0.3,
-                                    boxShadow: isElementFiltered(element) ? `0 0 15px ${getElementColor(element)}40` : 'none'
-                                },
-                                onClick: () => isElementFiltered(element) && handleElementClick(element)
-                            }, React.createElement('div', {
-                                className: "h-full flex flex-col justify-center items-center text-center p-1"
-                            }, [
-                                React.createElement('div', { key: 'atomic-num', className: "text-xs font-bold" }, element.AtomicNumber),
-                                React.createElement('div', { key: 'symbol', className: "text-sm font-bold" }, element.Symbol),
-                                React.createElement('div', { key: 'name', className: "text-xs truncate w-full hidden sm:block" }, element.Element)
-                            ]))
-                        )),
+                            key: 'separator',
+                            className: "flex items-center justify-center mb-6"
+                        }, React.createElement('div', {
+                            className: "glass-effect rounded-lg px-4 py-2 text-sm text-gray-400"
+                        }, "Lanthanides and Actinides")),
                         
+                        // Lanthanides row
                         React.createElement('div', {
-                            key: 'actinides',
-                            className: "grid gap-1",
-                            style: { gridTemplateColumns: 'repeat(auto-fit, minmax(40px, 1fr))' }
-                        }, actinides.map(element =>
+                            key: 'lanthanides-container',
+                            className: "space-y-2"
+                        }, [
                             React.createElement('div', {
-                                key: element.AtomicNumber,
-                                className: `aspect-square border border-gray-600 rounded-lg transition-all duration-300 cursor-pointer element-glow hover:scale-110 ${
-                                    !isElementFiltered(element) ? 'opacity-30' : ''
-                                }`,
-                                style: { 
-                                    backgroundColor: getElementColor(element), 
-                                    opacity: isElementFiltered(element) ? 0.9 : 0.3,
-                                    boxShadow: isElementFiltered(element) ? `0 0 15px ${getElementColor(element)}40` : 'none'
-                                },
-                                onClick: () => isElementFiltered(element) && handleElementClick(element)
-                            }, React.createElement('div', {
-                                className: "h-full flex flex-col justify-center items-center text-center p-1"
-                            }, [
-                                React.createElement('div', { key: 'atomic-num', className: "text-xs font-bold" }, element.AtomicNumber),
-                                React.createElement('div', { key: 'symbol', className: "text-sm font-bold" }, element.Symbol),
-                                React.createElement('div', { key: 'name', className: "text-xs truncate w-full hidden sm:block" }, element.Element)
-                            ]))
-                        ))
+                                key: 'lanthanides-label',
+                                className: "text-sm text-gray-400 pl-2"
+                            }, "Lanthanides (57-71)"),
+                            React.createElement('div', {
+                                key: 'lanthanides',
+                                className: "grid gap-1",
+                                style: { gridTemplateColumns: 'repeat(15, 1fr)' }
+                            }, lanthanides.map(element =>
+                                React.createElement('div', {
+                                    key: element.AtomicNumber,
+                                    className: `aspect-square border border-gray-600 rounded-lg transition-all duration-300 cursor-pointer element-glow hover:scale-110 ${
+                                        !isElementFiltered(element) ? 'opacity-30' : ''
+                                    }`,
+                                    style: { 
+                                        backgroundColor: getElementColor(element), 
+                                        opacity: isElementFiltered(element) ? 0.9 : 0.3,
+                                        boxShadow: isElementFiltered(element) ? `0 0 15px ${getElementColor(element)}40` : 'none'
+                                    },
+                                    onClick: () => isElementFiltered(element) && handleElementClick(element)
+                                }, React.createElement('div', {
+                                    className: "h-full flex flex-col justify-center items-center text-center p-1"
+                                }, [
+                                    React.createElement('div', { key: 'atomic-num', className: "text-xs font-bold" }, element.AtomicNumber),
+                                    React.createElement('div', { key: 'symbol', className: "text-sm font-bold" }, element.Symbol),
+                                    React.createElement('div', { key: 'name', className: "text-xs truncate w-full hidden sm:block" }, element.Element)
+                                ]))
+                            ))
+                        ]),
+                        
+                        // Actinides row
+                        React.createElement('div', {
+                            key: 'actinides-container',
+                            className: "space-y-2"
+                        }, [
+                            React.createElement('div', {
+                                key: 'actinides-label',
+                                className: "text-sm text-gray-400 pl-2"
+                            }, "Actinides (89-103)"),
+                            React.createElement('div', {
+                                key: 'actinides',
+                                className: "grid gap-1",
+                                style: { gridTemplateColumns: 'repeat(15, 1fr)' }
+                            }, actinides.map(element =>
+                                React.createElement('div', {
+                                    key: element.AtomicNumber,
+                                    className: `aspect-square border border-gray-600 rounded-lg transition-all duration-300 cursor-pointer element-glow hover:scale-110 ${
+                                        !isElementFiltered(element) ? 'opacity-30' : ''
+                                    }`,
+                                    style: { 
+                                        backgroundColor: getElementColor(element), 
+                                        opacity: isElementFiltered(element) ? 0.9 : 0.3,
+                                        boxShadow: isElementFiltered(element) ? `0 0 15px ${getElementColor(element)}40` : 'none'
+                                    },
+                                    onClick: () => isElementFiltered(element) && handleElementClick(element)
+                                }, React.createElement('div', {
+                                    className: "h-full flex flex-col justify-center items-center text-center p-1"
+                                }, [
+                                    React.createElement('div', { key: 'atomic-num', className: "text-xs font-bold" }, element.AtomicNumber),
+                                    React.createElement('div', { key: 'symbol', className: "text-sm font-bold" }, element.Symbol),
+                                    React.createElement('div', { key: 'name', className: "text-xs truncate w-full hidden sm:block" }, element.Element)
+                                ]))
+                            ))
+                        ])
                     ]),
                     
                     // Element legend
@@ -807,47 +886,51 @@
                         }, "Element Types"),
                         React.createElement('div', {
                             key: 'legend-grid',
-                            className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 text-sm"
+                            className: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-sm"
                         }, [
                             React.createElement('div', { key: 'alkali', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#10b981' } }),
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#22d3ee' } }),
                                 React.createElement('span', {}, "Alkali Metal")
                             ]),
                             React.createElement('div', { key: 'alkaline', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#059669' } }),
-                                React.createElement('span', {}, "Alkaline Earth")
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#f87171' } }),
+                                React.createElement('span', {}, "Alkaline Earth Metal")
                             ]),
                             React.createElement('div', { key: 'transition', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#374151' } }),
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#a855f7' } }),
                                 React.createElement('span', {}, "Transition Metal")
                             ]),
+                            React.createElement('div', { key: 'post-transition', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#34d399' } }),
+                                React.createElement('span', {}, "Post-transition Metal")
+                            ]),
+                            React.createElement('div', { key: 'metalloid', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#fbbf24' } }),
+                                React.createElement('span', {}, "Metalloid")
+                            ]),
+                            React.createElement('div', { key: 'reactive-nonmetal', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#3b82f6' } }),
+                                React.createElement('span', {}, "Reactive Nonmetal")
+                            ]),
+                            React.createElement('div', { key: 'halogen', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#60a5fa' } }),
+                                React.createElement('span', {}, "Halogen")
+                            ]),
+                            React.createElement('div', { key: 'noble', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#f472b6' } }),
+                                React.createElement('span', {}, "Noble Gas")
+                            ]),
                             React.createElement('div', { key: 'lanthanide', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#f59e0b' } }),
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#e879f9' } }),
                                 React.createElement('span', {}, "Lanthanide")
                             ]),
                             React.createElement('div', { key: 'actinide', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#dc2626' } }),
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#fb923c' } }),
                                 React.createElement('span', {}, "Actinide")
                             ]),
-                            React.createElement('div', { key: 'noble', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#8b5cf6' } }),
-                                React.createElement('span', {}, "Noble Gas")
-                            ]),
-                            React.createElement('div', { key: 'halogen', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#ec4899' } }),
-                                React.createElement('span', {}, "Halogen")
-                            ]),
-                            React.createElement('div', { key: 'nonmetal', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#ef4444' } }),
-                                React.createElement('span', {}, "Nonmetal")
-                            ]),
-                            React.createElement('div', { key: 'metalloid', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#f59e0b' } }),
-                                React.createElement('span', {}, "Metalloid")
-                            ]),
-                            React.createElement('div', { key: 'metal', className: "flex items-center space-x-2" }, [
-                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#3b82f6' } }),
-                                React.createElement('span', {}, "Metal")
+                            React.createElement('div', { key: 'unknown', className: "flex items-center space-x-2" }, [
+                                React.createElement('div', { className: "w-4 h-4 rounded", style: { backgroundColor: '#9ca3af' } }),
+                                React.createElement('span', {}, "Unknown Properties")
                             ])
                         ])
                     ]),
